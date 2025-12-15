@@ -1,96 +1,57 @@
-const { Telegraf, Markup } = require('telegraf');
+from pyrogram import Client, filters
+import random
+import asyncio
 
-const bot = new Telegraf('8517103880:AAE8Jeng7XBicWQQt7eXjp6iz3iCmM_RMCA');
+API_ID = 35442064
+API_HASH = "2ccfae0b01c89166657eb34f39392dcf"
+BOT_TOKEN = "8516448938:AAFV1lA2iO1rTGu_syIOiYCmns2iJUGVN6o"
 
-let postData = {};
+REACTIONS = ["🔥", "❤️", "👍", "😍", "👏", "😮"]
 
-bot.start((ctx) => {
-    ctx.reply("👋 Welcome! Use /post to create a Telegram post with inline buttons.");
-});
+app = Client(
+    "PublicAutoReactBot",
+    api_id=API_ID,
+    api_hash=API_HASH,
+    bot_token=BOT_TOKEN
+)
 
-bot.command("post", (ctx) => {
-    postData[ctx.from.id] = { step: 1 };
-    ctx.reply("📝 *Enter Post Title:*", { parse_mode: "Markdown" });
-});
+@app.on_message(filters.command("start"))
+async def start(_, message):
+    await message.reply_text(
+        "🔥 **Public Auto React Bot**\n\n"
+        "➕ Add me as **Admin** to your channel\n"
+        "✅ Give **Add Reactions** permission\n"
+        "💥 I will auto react to every post\n\n"
+        "👨‍💻 Developed by CHALAH X BOT V3"
+    )
 
-// Step 1 - Title
-bot.on("text", async (ctx) => {
-    let id = ctx.from.id;
-    if (!postData[id]) return;
+@app.on_message(filters.command("help"))
+async def help(_, message):
+    await message.reply_text(
+        "📌 **How to use:**\n\n"
+        "1️⃣ Add bot to your channel\n"
+        "2️⃣ Make bot admin\n"
+        "3️⃣ Allow Add Reactions\n"
+        "4️⃣ Done! 🎉\n\n"
+        "🔥 Reactions will be added automatically"
+    )
 
-    let step = postData[id].step;
+@app.on_message(filters.command("ping"))
+async def ping(_, message):
+    await message.reply_text("🏓 Pong! Bot is alive 🔥")
 
-    if (step === 1) {
-        postData[id].title = ctx.message.text;
-        postData[id].step = 2;
-        return ctx.reply("✏️ *Enter description text:*", { parse_mode: "Markdown" });
-    }
+@app.on_message(filters.channel)
+async def auto_react(_, message):
+    try:
+        reacts = random.sample(REACTIONS, 5)
+        for emoji in reacts:
+            await asyncio.sleep(1.5)  # Flood control
+            await app.send_reaction(
+                chat_id=message.chat.id,
+                message_id=message.id,
+                emoji=emoji
+            )
+    except Exception as e:
+        print(e)
 
-    if (step === 2) {
-        postData[id].description = ctx.message.text;
-        postData[id].step = 3;
-        return ctx.reply("🔗 *Enter Button Text:*", { parse_mode: "Markdown" });
-    }
-
-    if (step === 3) {
-        postData[id].buttonText = ctx.message.text;
-        postData[id].step = 4;
-        return ctx.reply("🌍 *Enter Button URL:*", { parse_mode: "Markdown" });
-    }
-
-    if (step === 4) {
-        postData[id].buttonUrl = ctx.message.text;
-        postData[id].step = 5;
-
-        // Show preview
-        ctx.reply(
-            `📌 *Preview:*\n\n*${postData[id].title}*\n${postData[id].description}`,
-            {
-                parse_mode: "Markdown",
-                reply_markup: {
-                    inline_keyboard: [
-                        [{
-                            text: postData[id].buttonText,
-                            url: postData[id].buttonUrl
-                        }],
-                        [{
-                            text: "🚀 Send to Channel",
-                            callback_data: "send_channel"
-                        }]
-                    ]
-                }
-            }
-        );
-    }
-});
-
-// Send to channel
-bot.action("send_channel", async (ctx) => {
-    let id = ctx.from.id;
-
-    try {
-        await ctx.telegram.sendMessage(
-            "@YOUR_CHANNEL_USERNAME",
-            `*${postData[id].title}*\n${postData[id].description}`,
-            {
-                parse_mode: "Markdown",
-                reply_markup: {
-                    inline_keyboard: [[{
-                        text: postData[id].buttonText,
-                        url: postData[id].buttonUrl
-                    }]]
-                }
-            }
-        );
-
-        ctx.editMessageReplyMarkup(); // remove buttons
-        ctx.reply("✅ Successfully sent to channel!");
-        delete postData[id];
-
-    } catch (err) {
-        ctx.reply("❌ Error: Bot must be admin in your channel.");
-    }
-});
-
-bot.launch();
-console.log("Bot Running...");
+app.run()
