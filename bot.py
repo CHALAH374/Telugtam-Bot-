@@ -1,98 +1,216 @@
-import asyncio
-import re
-import pytesseract
-from PIL import Image
-from pyrogram import Client, filters
-from pyrogram.types import Message
+import json, os, random
+from telegram import (
+    Update,
+    InlineKeyboardButton,
+    InlineKeyboardMarkup
+)
+from telegram.ext import (
+    ApplicationBuilder,
+    CommandHandler,
+    MessageHandler,
+    ContextTypes,
+    CallbackQueryHandler,
+    filters
+)
 
-API_ID = 35442064
-API_HASH = "2ccfae0b01c89166657eb34f39392dcf"
-BOT_TOKEN = "8384180043:AAEpcIoM9s_YRmF-MYkUY8KJRGvCzOh2KBk"
+# ================= CONFIG =================
+BOT_TOKEN = "8124366243:AAH5sLw7M07PaQROdNPrZsBS7jTUVZZSOuU"
+BOT_USERNAME = "@Bybit_Refferal_Earn_Srilanka_bot"
+CHANNEL_USERNAME = "@Movie_Zone_Vip"
+ADMIN_IDS = [8452357204]
+DATA_FILE = "users.json"
+# =========================================
 
-OWNER_CHANNEL = -1003401753390
-YOUR_LINK = "https://t.me/Movie_Zone_Vip"
-DELETE_AFTER = 7200
+# ------------ DATA ------------------------
+def load_data():
+    if not os.path.exists(DATA_FILE):
+        return {}
+    with open(DATA_FILE, "r") as f:
+        return json.load(f)
 
-app = Client("promo_bot", api_id=API_ID, api_hash=API_HASH, bot_token=BOT_TOKEN)
+def save_data(data):
+    with open(DATA_FILE, "w") as f:
+        json.dump(data, f, indent=2)
 
-user_links = {}
-waiting_ss = set()
-
-PROMO_TEXT = f"""
-🎬 Movie Lovers Special Alert 🔞
-
-2025 අලුතින්ම Release උන
-Tamil | English | Korean Movies
-සිංහල උපසිරැසි සමඟ 🔥
-
-⚠️ 18+ Viewers Only
-👉 Join Now 👇
-{YOUR_LINK}
-"""
-
-@app.on_message(filters.command("start"))
-async def start(client, message: Message):
-    await message.reply_text(
-        "👋 Welcome!\n\n📎 ඔබගේ Channel Link එක එවන්න"
-    )
-
-@app.on_message(filters.text & filters.private)
-async def get_link(client, message: Message):
-    if message.from_user.id in waiting_ss:
-        return
-
-    link = message.text.strip()
-    if not re.search(r"t\.me/", link):
-        await message.reply("❌ Valid Telegram channel link එකක් එවන්න")
-        return
-
-    user_links[message.from_user.id] = link
-    waiting_ss.add(message.from_user.id)
-
-    promo = await message.reply_text(PROMO_TEXT)
-    user_post = await message.reply_text(
-        "📸 මේ post එක ඔයාගෙ channel එකට share කරලා\nScreenshot එක මෙතන send කරන්න"
-    )
-
-    asyncio.create_task(auto_delete(promo))
-    asyncio.create_task(auto_delete(user_post))
-
-async def auto_delete(msg):
-    await asyncio.sleep(DELETE_AFTER)
-    try:
-        await msg.delete()
-    except:
-        pass
-
-@app.on_message(filters.photo & filters.private)
-async def check_screenshot(client, message: Message):
-    uid = message.from_user.id
-    if uid not in waiting_ss:
-        return
-
-    file = await message.download()
-    text = pytesseract.image_to_string(Image.open(file))
-
-    if YOUR_LINK.lower() in text.lower():
-        await message.reply("✅ Verified! Thank you ❤️")
-
-        caption = f"""
-📢 New Promotion Post
-
-🔗 Partner Channel:
-{user_links.get(uid)}
-"""
-
-        await client.send_photo(
-            chat_id=OWNER_CHANNEL,
-            photo=file,
-            caption=caption
-        )
-
-        waiting_ss.remove(uid)
-        user_links.pop(uid, None)
+# ------------ CAPTCHA ---------------------
+def generate_captcha():
+    a = random.randint(20, 99)
+    b = random.randint(1, 20)
+    if random.choice([True, False]):
+        return f"{a} - {b}", a - b
     else:
-        await message.reply(
-            "❌ Screenshot එකේ අපේ link එක පේන නැහැ!\n\n"
-            "👉 Correct Screenshot එකක් නැවත එවන්න"
+        return f"{a} + {b}", a + b
+
+# ------------ JOIN CHECK ------------------
+async def is_joined(update: Update, context):
+    user_id = update.effective_user.id
+    try:
+        member = await context.bot.get_chat_member(CHANNEL_USERNAME, user_id)
+        return member.status in ["member", "administrator", "creator"]
+    except:
+        return False
+
+# ------------ START -----------------------
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    joined = await is_joined(update, context)
+    if not joined:
+        keyboard = [
+            [InlineKeyboardButton("📢 Join Channel", url=f"https://t.me/{CHANNEL_USERNAME[1:]}")],
+            [InlineKeyboardButton("✅ Check Join", callback_data="check_join")]
+        ]
+        await update.message.reply_text(
+            "🚫 **You must join our channel to continue!**",
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode="Markdown"
+        )
+        return
+
+    user = update.effective_user
+    args = context.args
+    data = load_data()
+    uid = str(user.id)
+    ref = args[0] if args else None
+
+    if uid not in data:
+        q, ans = generate_captcha()
+        data[uid] = {
+            "name": user.first_name,
+            "uid": None,
+            "invited": [],
+            "count": 0,
+            "captcha": {
+                "question": q,
+                "answer": ans,
+                "verified": False
+            }
+        }
+
+        if ref and ref in data and ref != uid:
+            if uid not in data[ref]["invited"]:
+                data[ref]["invited"].append(uid)
+                data[ref]["count"] += 1
+
+    save_data(data)
+
+    await update.message.reply_text(
+        f"""👋 Hi {user.first_name}
+
+🔐 **Captcha Solve කරන්න**
+🧮 **{data[uid]['captcha']['question']} = ?**
+
+✍️ Answer send කරන්න
+"""
     )
+
+# ------------ CALLBACK --------------------
+async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+
+    if query.data == "check_join":
+        joined = await is_joined(update, context)
+        if joined:
+            await query.message.reply_text("✅ Joined! Now send /start")
+        else:
+            await query.message.reply_text("❌ Still not joined!")
+
+# ------------ CAPTCHA CHECK ---------------
+async def check_captcha(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    uid = str(update.effective_user.id)
+    data = load_data()
+
+    if uid not in data:
+        return
+
+    captcha = data[uid]["captcha"]
+    if captcha["verified"]:
+        return
+
+    try:
+        ans = int(update.message.text.strip())
+    except:
+        return
+
+    if ans == captcha["answer"]:
+        data[uid]["captcha"]["verified"] = True
+        save_data(data)
+        await update.message.reply_text(
+            "✅ Correct!\n👉 `/submitUID <Bybit UID>` send කරන්න"
+        )
+    else:
+        await update.message.reply_text("❌ Wrong answer!")
+
+# ------------ UID -------------------------
+async def submit_uid(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    uid = str(update.effective_user.id)
+    data = load_data()
+
+    if not data[uid]["captcha"]["verified"]:
+        await update.message.reply_text("🔐 Solve captcha first!")
+        return
+
+    if not context.args:
+        await update.message.reply_text("Usage: `/submitUID 12345678`", parse_mode="Markdown")
+        return
+
+    data[uid]["uid"] = context.args[0]
+    save_data(data)
+    await update.message.reply_text("✅ UID Saved!\n👉 /invite")
+
+# ------------ INVITE ----------------------
+async def invite(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    uid = update.effective_user.id
+    link = f"https://t.me/{BOT_USERNAME}?start={uid}"
+    await update.message.reply_text(f"🔗 Your Invite Link:\n\n{link}")
+
+# ------------ ADMIN PANEL -----------------
+async def admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user.id not in ADMIN_IDS:
+        return
+
+    keyboard = [
+        [InlineKeyboardButton("📊 Users", callback_data="users")],
+        [InlineKeyboardButton("🏆 Leaderboard", callback_data="lb")],
+        [InlineKeyboardButton("📤 Export Data", callback_data="export")]
+    ]
+    await update.message.reply_text(
+        "👮 **Admin Panel**",
+        reply_markup=InlineKeyboardMarkup(keyboard)
+    )
+
+async def admin_actions(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    data = load_data()
+
+    if query.data == "users":
+        await query.message.reply_text(f"👥 Total Users: {len(data)}")
+
+    elif query.data == "lb":
+        top = sorted(data.items(), key=lambda x: x[1]["count"], reverse=True)[:5]
+        msg = "🏆 Leaderboard\n\n"
+        for i, (_, u) in enumerate(top, 1):
+            msg += f"{i}. {u['name']} — {u['count']}\n"
+        await query.message.reply_text(msg)
+
+    elif query.data == "export":
+        await query.message.reply_text(f"📄 Data file: `{DATA_FILE}`", parse_mode="Markdown")
+
+# ------------ MAIN ------------------------
+def main():
+    app = ApplicationBuilder().token(BOT_TOKEN).build()
+
+    app.add_handler(CommandHandler("start", start))
+    app.add_handler(CommandHandler("submitUID", submit_uid))
+    app.add_handler(CommandHandler("invite", invite))
+    app.add_handler(CommandHandler("admin", admin))
+
+    app.add_handler(CallbackQueryHandler(callback_handler, pattern="check_join"))
+    app.add_handler(CallbackQueryHandler(admin_actions))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, check_captcha))
+
+    print("🤖 Bot Running...")
+    app.run_polling()
+
+if __name__ == "__main__":
+    main()
