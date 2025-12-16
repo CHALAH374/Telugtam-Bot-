@@ -14,7 +14,7 @@ from telegram.ext import (
 # ================= CONFIG =================
 BOT_TOKEN = "8402659411:AAE1L1cCf_U_hb4kVRarpnL1ExEAb3eVZaQ"
 BOT_USERNAME = "@Refferal_Youtube_free_bot"
-CHANNEL_USERNAME = "https://t.me/Movie_Zone_Vip"
+CHANNEL_USERNAME = "Movie_Zone_Vip"
 ADMIN_IDS = [8452357204]
 APK_LINK = "https://t.me/PCMODAPKFREE_bot?start=BQADAQAD1wwAAp_hCUaESDFEBiF5vRYE"
 DATA_FILE = "users.json"
